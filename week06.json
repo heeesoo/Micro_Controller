@@ -1,0 +1,72 @@
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <util/delay.h>
+#include <time.h>
+#define F_CPU 16000000UL
+#define __DELAY_BACKWARD_COMPATIBLE__
+#define MOTOR_FORWARD 1  // Motor Forward Signal
+#define MOTOR_REVERSE 0  // Motor Reverse Signal
+#define MOTOR_CW 0xb0  // Motor Forward moving
+#define MOTOR_CCW 0x70  // Motor Reverse moving
+#define MOTOR_BRAKE 0xd0  // Motor Brake
+#define MOTOR_STOP 0x30  // Motor stop
+#define MOTOR_STANDBY 0x00  // Motor STAY
+#define ON 1
+#define OFF 0
+
+volatile int motor_state = MOTOR_FORWARD;
+
+
+// define Interrupts part.
+ 
+ISR(INT4_vect)  // PE 4 button function.
+{
+	_delay_ms(1000);
+	if((PINE & 0x10) == 0x10)
+	return;
+	
+	EIFR |= 1<<4;
+	if(motor_state == MOTOR_REVERSE)  // n_state reverse -> c_state forward
+	{
+		motor_state = MOTOR_FORWARD;
+	}
+	
+}
+
+ISR(INT5_vect)  // PE 5 button function.
+{
+	_delay_ms(1000);
+	if((PINE & 0x20) == 0x20)
+	return;
+	
+	EIFR |= 1<<5;
+	if(motor_state == MOTOR_FORWARD)  // n_state forward -> c_state reverse
+	{
+		motor_state = MOTOR_REVERSE;
+	}
+}
+
+
+int main(void)
+{
+	DDRB = 0Xf0;
+	PORTB = MOTOR_STANDBY;
+	
+	EICRB = 0x0a;
+	EIMSK = 0x30;
+	sei();
+	
+	while(1)
+	{
+		if(motor_state == MOTOR_FORWARD)
+		{
+			PORTB = MOTOR_CW;  // Continue forward port 
+		}
+		
+		else if(motor_state == MOTOR_REVERSE)
+		{
+			PORTB = MOTOR_CCW;  // Continue reverse port 
+		}
+	}
+	
+}

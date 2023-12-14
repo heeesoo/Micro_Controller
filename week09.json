@@ -1,0 +1,85 @@
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#define F_CPU 16000000UL
+#include <util/delay.h>
+#define NULL 0x00
+// CLCD 제어 명령어 세팅
+
+#define BIT4_LINE2_DOT58 0x28 // 4비트 모드, 2줄, 5x8도트
+#define DISPON_CUROFF_BLKOFF 0x0C // 디스플레이 On, 커서 Off, 블링크 Off
+#define DISPOFF_CUROFF_BLKOFF 0x08 // 디스플레이 Off, 커서 Off, 블링크 Off
+#define INC_NOSHIFT 0x06 // 커서 증가 방향, Delete/insert
+#define DISPCLEAR 0x01 // 디스플레이 클리어
+#define CUR1LINE 0x80 // 첫째 줄의 처음으로 커서 위치
+#define CUR2LINE 0xC0 // 둘째 줄의 처음으로 커서 위치
+void CLCD_cmd(char); // 명령어 전송 함수
+void CLCD_data(char); // 데이터 전송 함수
+void CLCD_puts(char *); // 문자열 처리 함수
+char motto1[] = "You'll never"; // 좌우명 첫째 줄
+char motto2[] = "Walk alone"; // 좌우명 둘째 줄
+
+volatile int state = 1;
+
+ISR(INT4_vect){
+	_delay_ms (100); // 스위치 바운스 주기만큼 기다림
+	if((PINE & 0x10)==0x10)
+	return; // 인터럽트 입력핀을 다시 검사하여 눌려진 상태가 아니면 리턴
+	EIFR |= 1<<4; // 눌려진 상태이면 그 사이 바운스에 의한 인터럽트는 무효화
+	
+	state = !state;
+	
+}
+
+int main(void){
+	sei();
+	_delay_ms(50); // 전원 인가 후 CLCD 셋업 시간
+	DDRC = 0xff; // 명령어/데이터 포트(PORTC) 출력 설정
+	DDRD = 0xff; // 제어 포트(PORTD) 출력 설정
+	DDRE = 0x00; // 스위치 입력
+	EICRB = 0x0a; // INT4, INT5 하강 에지 트리거
+	EIMSK = 0x30; // INT4, INT5 인터럽트 인에이블
+	CLCD_cmd(BIT4_LINE2_DOT58); // 4비트 모드, 2줄, 5x8도트
+	CLCD_cmd(DISPON_CUROFF_BLKOFF); // 디스플레이 On, 커서 Off, 블링크 Off
+	CLCD_cmd(INC_NOSHIFT); // 커서 증가 방향, Delete/insert
+	CLCD_cmd(DISPCLEAR); // 디스플레이 Clear
+	_delay_ms(2); // 디스플레이 클리어 실행 시간 동안 대기
+	CLCD_cmd(CUR1LINE); // 첫째 줄의 처음으로 커서 위치
+	CLCD_puts(motto1); // 좌우명 첫째 줄 디스플레이
+	CLCD_cmd(CUR2LINE); // 둘째 줄의 처음으로 커서 위치
+	CLCD_puts(motto2); // 좌우명 둘째 줄 디스플레이
+	while(1){ // 1초마다 깜빡임
+		if (state == 1)
+		CLCD_cmd(DISPON_CUROFF_BLKOFF); // 디스플레이 ON
+		else
+		CLCD_cmd(DISPOFF_CUROFF_BLKOFF); // 디스플레이 OFF
+	}
+}
+
+void CLCD_puts(char *ptr){
+	while(*ptr != NULL) // 문자열이 마지막(NULL)인지 검사
+	CLCD_data(*ptr++); // 마지막이 아니면 1 문자 디스플레이
+}
+void CLCD_data(char data){
+	PORTD = 0x04; // 0b00000100, E(4)=0, R/W(3)=0, RS(2)=1, 데이터 사이클 시작
+	_delay_us(1); //Setup Time
+	PORTD = 0x14; //0b00010100, E(4)=1, R/W(3)=0, RS(2)=1, 명령어 활성화/Write/데이터 모드
+	PORTC = data & 0xf0; // 상위 4비트 전송
+	PORTD = 0x04; // 0b00000100, E(4)=0, R/W(3)=0, RS(2)=1, 연속 데이터 사이클(시작+종료)
+	_delay_us(2); // 이전 사이클의 Hold Time & 다음 사이클의 Setup Time
+	PORTD = 0x14; //0b00010100, E(4)=1, R/W(3)=0, RS(2)=1, 명령어 활성화/Write/데이터 모드
+	PORTC = (data << 4) & 0xf0; // 하위 4비트 전송
+	PORTD = 0x04; // 0b00000100, E(4)=0, R/W(3)=0, RS(2)=1, 명령어 사이클 종료
+	_delay_ms(1); // Hold Time
+}
+void CLCD_cmd(char cmd){
+	PORTD = 0x00; // 0b00000000, E(4)=0, R/W(3)=0, RS(2)=0, 명령어 사이클 시작
+	_delay_us(1); //Setup Time
+	PORTD = 0x10; //0b00010000, E(4)=1, R/W(3)=0, RS(2)=0, 명령어 활성화/Write/명령어 모드
+	PORTC = cmd & 0xf0; // 상위 4비트 전송	
+	PORTD = 0x00; // 0b00000000, E(4)=0, R/W(3)=0, RS(2)=0, 연속 명령어 사이클(시작+종료)
+	_delay_us(2); // 이전 사이클의 Hold Time & 다음 사이클의 Setup Time
+	PORTD = 0x10; // 0b00010000, E(4)=1, R/W(3)=0, RS(2)=0, 명령어 활성화/Write/명령어 모드
+	PORTC = (cmd << 4) & 0xf0; // 하위 4비트 전송
+	PORTD = 0x00; // 0b00000000, E(4)=0, R/W(3)=0, RS(2)=0, 명령어 사이클 종료
+	_delay_ms(1); // Hold Time
+}

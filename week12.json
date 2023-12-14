@@ -1,0 +1,65 @@
+// Week 12
+#include <avr/io.h>
+#define F_CPU 16000000UL
+#define __DELAY_BACKWARD_COMPATIBLE__
+#include <util/delay.h>
+#define ON 1
+#define OFF 0
+#define NULL 0
+#define DO 1047
+#define RE 1175
+#define MI 1319
+#define FA 1397
+#define SOL 1568
+#define RA 1760
+#define SI 1976
+#define DOO 2093
+void init_uart1( ) { // UART1 초기화 함수
+	UCSR1B = 0x18; // TX/RX 인에이블
+	UCSR1C = 0x06; // 8비트 데이터, 패리티 없음, 정지 비트 1비트
+	UBRR1H = 0; // 데이터율 세팅
+	UBRR1L = 8; // 16Mhz, 115200데이터율, 10진수
+}
+void putchar1(char c){ // 문자 전송 함수
+	while(!(UCSR1A & (1<<UDRE1))); // (1<<UDRE1)==0x20 (#define UDRE1 5)
+	UDR1 = c; // 문자 전송
+}
+char getchar1( ){ // 문자 전송 함수
+	while (!(UCSR1A & (1<<RXC1))); // (1<<RXC1)==0x80 (#define RXC1 7)
+	return(UDR1); // 문자 수신
+}
+void buzzer(int hz, int count){
+	int i, ms, us;
+	ms = 1000/(2*hz);
+	us = (1000.0/(2*hz) - 1000/(2*hz)) * 1000;
+	for(i=0; i<count; i++){
+		PORTE |= 1 << 4; _delay_ms(ms); _delay_us(us);
+		PORTE &= ~(1 << 4); _delay_ms(ms); _delay_us(us);
+	}
+}
+int main(){
+	char music;
+	DDRE = 0x10;
+	init_uart1(); // UART1 초기화 함수
+	while(1){
+		music = getchar1(); // 스마트폰으로 부터 1 문자 수신
+		putchar1(music); // 수신 받은 문자를 스마트폰으로 에코 백
+		if (music=='0')
+		buzzer(DO,100);
+		else if (music=='1')
+		buzzer(RE,100);
+		else if (music=='2')
+		buzzer(MI,100);
+		else if (music=='3')
+		buzzer(FA,100);
+		else if (music=='4')
+		buzzer(SOL,100);
+		else if (music=='5')
+		buzzer(RA,100);
+		else if (music=='6')
+		buzzer(SI,100);
+		else if (music=='7')
+		buzzer(DOO,100);
+		else; // 나머지 수신 값은 무시
+	}
+}

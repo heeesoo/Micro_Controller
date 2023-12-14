@@ -1,0 +1,71 @@
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#define F_CPU 16000000UL
+#define __DELAY_BACKWARD_COMPATIBLE__
+#include <util/delay.h>
+#define DO 0
+#define RE 1
+#define MI 2
+#define FA 3
+#define SOL 4
+#define RA 5
+#define SI 6
+#define DDO 7
+#define REST 8
+#define EOS -1 // End Of Song
+#define ON 0 // 버저 ON
+#define OFF 1 // 버저 OFF
+#define N2 1250 // 2분음표 길이 60*1000 / 96*2ms
+#define N4 (N2/2) // 4분음표 길이 60*1000/96ms
+#define N8 (N2/4) // 8분음표 길이 60*1000/96/2ms
+#define N16 (N2/8) // 16분음표 길이 60*1000/96/4ms
+#define N8N16 (N8+N16) // 점8분음표 길이 (N8+N16)ms
+#define R 1 // 묵음, 1ms
+
+volatile int state, tone;
+
+char f_table[] = {17, 43, 66, 77, 97, 114, 129, 137, 255}; // TCNT0 초기값
+
+int song[] = {DO, REST, DO, SOL, REST, SOL, FA, REST, FA, MI, RE, DO, REST, 
+	SOL, REST, SOL, DDO, REST, DDO, SI, DDO, SI, RA, SOL,
+	DO, REST, DO, SOL, REST, SOL, FA, REST, FA, MI, RE, DO, REST, 
+	RE, REST, RE, REST, RE, MI, RE, DO, REST, DO, DDO, SI, DO, EOS};
+
+int time[] = {N4, R, N4, N4, R, N4, N8, R, N8, N8, N8, N4, R,
+	N4, R, N4, N4, R, N4, N8, N8, N8, N8, N4,
+	N4, R, N4, N4, R, N4, N8, R, N8, N8, N8, N4, R,
+	N8, R, N8, R, N8, N8, N4, N4, R, N8, N8, N8, N8, EOS};
+
+char LED[] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x00};
+
+ISR (TIMER0_OVF_vect){ // Timer/Counter0 Overflow ISR
+	TCNT0 = f_table[tone]; // TCNT0를 주어진 음으로 초기화
+	if (state == OFF){
+		PORTB |= 1 <<4; // 버저 포트 ON
+		state = ON;
+	}
+	else{
+		PORTB &= ~(1<<4); // 버저 포트 OFF
+		state = OFF;
+	}
+}
+
+int main(){
+	int i=0;
+	DDRA = 0xff; // LED 출력
+	DDRB |= 0x10; // 버저 포트(PB4)만 출력으로 설정
+	TCCR0 = 0x03; // Normal Mode, 32배 오버샘플링
+	TIMSK = 0x01; // Enable overflow interrupt, TOIE0 비트 세팅
+	TCNT0 = f_table[song[i]]; // TCNT0 초기화
+	sei(); // global interrupt 활성화
+
+while(1){
+	i=0; // 연주음의 순서
+	
+	do {
+		tone = song[i]; // 현재 음
+		PORTA = LED[tone]; // LED 출력
+		_delay_ms(time[i++]); // 음의 길이
+	}while(song[i]!= EOS); // 마지막 음인지 검사
+	}
+}

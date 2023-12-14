@@ -1,0 +1,26 @@
+#include <avr/io.h>
+#include <util/delay.h>
+#define _DELAY_BACKWARD_COMPATIBLE_  
+
+int main(void) {
+	DDRA = 0xff; 
+
+	while (1) {  // 밑 while문 작업을 반복
+		
+		PORTA = 0x0f;  // 오른쪽 4개의 LED가 모두 점멸
+		_delay_ms(2000);  
+
+		
+		PORTA = 0x00;  // 모든 LED가 off 상태로 전환
+		_delay_ms(2000); 
+
+
+		PORTA = 0xf0;  // 왼쪽 4개의 LED가 모두 점멸
+		_delay_ms(2000); 
+
+		PORTA = 0x00;  // 모든 LED가 off 상태로 전환
+		_delay_ms(2000); 
+	}
+
+	return 0;
+}

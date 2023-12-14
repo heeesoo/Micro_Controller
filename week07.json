@@ -1,0 +1,48 @@
+#include <avr/io.h>
+#define F_CPU 16000000UL
+#include <util/delay.h>
+#define CDS_10 341 // 10 lux → 10/(20+10) * 1024 (CdS = 20K)) = 341
+#define CDS_20 450
+#define CDS_50 550
+#define CDS_80 650
+#define CDS_100 731 // 100 lux → 10/(4+10) * 1024 (CdS = 4K)) = 731
+void init_adc();
+unsigned short read_adc();
+void show_adc_led(unsigned short data);
+
+int main(){
+	unsigned short value;
+	DDRA = 0xff; // LED 출력
+	DDRF = 0x00; // ADC 입력
+	init_adc(); // ADC 초기화
+	while(1){
+		value = read_adc(); // AD 변환 및 AD 값 읽기
+		show_adc_led(value); // LED 켜기
+	}
+}
+
+void init_adc(){
+	ADMUX = 0x40; // REFS(1:0) = 01 : AVCC (+5V) 기준
+	// ADLAR = 0 : 우측 정렬
+	// MUX (4:0) = 00000 : ADC0
+	ADCSRA = 0x87;// ADEN = 1 : ADC 인에이블
+	// ADFR = 0 : single conversion 모드
+	// ADPS (2:0) = 111: 128분주, 8us 주기
+}
+
+unsigned short read_adc(){
+	unsigned char adc_low, adc_high;
+	unsigned short value;
+	ADCSRA |= 0x40; // ADC 변환 시작, ADSC = 1
+	while ((ADCSRA & 0x10) != 0x10); // ADIF가 1인지 검사
+	adc_low = ADCL; // ADC 하위 8비트 값 읽기
+	adc_high = ADCH; // ADC 상위 8비트 값 읽기
+	value = (adc_high << 8) | adc_low; // 상 하위 비트를 병합하여 16비트로 만들기
+	return value;
+}
+
+void show_adc_led(unsigned short value) {
+	if (value<=CDS_10) PORTA = 0xff; // 8 LED ON
+	else if (value >= CDS_100) PORTA = 0x00; // 0 LED ON
+	else PORTA = 0x00; // 모든 LEDs OFF
+}

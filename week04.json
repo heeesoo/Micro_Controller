@@ -1,0 +1,74 @@
+#include<avr/io.h>
+#include<avr/interrupt.h>
+#define F_CPU 16000000UL
+#include <util/delay.h>
+#define IDLE 0 // IDLE 상태 값
+#define STOP 1 // STOP 상태 값
+#define GO 2 // GO 상태 값
+volatile long int cur_time = 0; // 'current time’ 변수 초기화
+volatile long int stop_time = 0; // ‘stop time’ 변수 초기화
+volatile int state = IDLE; // state : 현재 상태를 나타내는 전역 변수
+unsigned char digit[]= {0x3f, 0x06, 0x5b, 0x4f, 0x66, 0x6d, 0x7c, 0x07, 0x7f, 0x67};
+unsigned char fnd_sel[4] = {0x01, 0x02, 0x04, 0x08};
+
+ISR(INT4_vect){
+	_delay_ms (100); // 바운스 기간동안 지연
+	if ((PINE & 0x10) == 0x10) // 인터럽트 핀 검사
+	return; // 눌려진 상태가 아니면 리턴
+	EIFR |= 1 <<4; // 그 사이 바운스에 의해 발생한 인터럽트는 무효화
+	if (state == IDLE || state == STOP) // IDLE 또는 STOP 상태라면
+	state = GO;
+	else{ // 만약 GO 상태라면
+		state = STOP; // -> STOP (상태 변경)
+		
+	}
+}
+
+ISR(INT5_vect){
+	_delay_ms (100); // 바운스 기간동안 지연
+	if ((PINE & 0x20) == 0x20) // 인터럽트 핀 검사
+	return; // 눌려진 상태가 아니면 리턴
+	EIFR |= 1 << 5; // 그 사이 바운스에 의해 발생한 인터럽트는 무효화
+	state = IDLE; // 상태 초기화
+	cur_time = 0; // 'current time' 변수 초기화
+	stop_time = 0; // 'stop time’ 변수 초기화
+}
+
+void init_stopwatch(void){
+	DDRC = 0xff; // FND 출력
+	DDRG = 0x0f; // COM 출력
+	DDRE = 0x00; // SW 입력
+	sei(); // "SREG | = 0x80“과 등가
+	EICRB = 0x0a; // INT4, INT5 하강 에지 트리거
+	EIMSK = 0x30; // INT4, INT5 인터럽트 인에이블
+}
+
+void display_fnd(int count){ // 함수 전체 실행시간은 약 0.01초
+	long int i, fnd[4]; // 배열 선언
+	fnd[3] = (count/1000)%10; // 1000 자리
+	fnd[2] = (count/100)%10; // 100 자리
+	fnd[1] = (count/10)%10; // 10 자리
+	fnd[0] = count%10; // 1 자리
+	for (i=0; i<4; i++) {
+		PORTC = digit[fnd[i]]; // dot 추가
+		PORTG = fnd_sel[i];
+		if (i%2) _delay_ms(2); // 2ms 지연
+		else _delay_ms(3); // 3ms 지연, 총 10ms 지연
+	}
+}
+
+int main(){
+	init_stopwatch( );
+	while(1){
+		if (state == IDLE) display_fnd(stop_time); 
+		else if (state == STOP){
+			display_fnd(stop_time); 
+			cur_time++;
+		}
+		else{
+			display_fnd(cur_time); 
+			cur_time++; 
+		}
+		if (cur_time == 10000) cur_time = 0; 
+	}
+}

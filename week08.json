@@ -1,0 +1,51 @@
+#include <avr/io.h>
+#define F_CPU 16000000UL
+#include <util/delay.h>
+#include <stdio.h>
+
+void init_uart0() {
+	// UART 초기화 코드 (통신 속도 및 설정에 주의해야 합니다)
+	UCSR0B = (1 << RXEN0) | (1 << TXEN0); // RXENn 인에이블, TXENn 인에이블
+	UCSR0C = (1 << UCSZ01) | (1 << UCSZ00); // 8-bit 데이터, No Parity, 1 Stop Bit
+	UBRR0H = 0;
+	UBRR0L = 103; // 16MHz에서 9600 baud로 설정
+}
+
+void putchar0(char c) {
+	while (!(UCSR0A & (1 << UDRE0))); // UDRE0 비어 있을 때까지 대기
+	UDR0 = c;
+}
+
+char getchar0() {
+	while (!(UCSR0A & (1 << RXC0))); // RXC0가 1이 될 때까지 대기
+	return UDR0;
+}
+
+void display_multiplication_table(int number) {
+	for (int i = 1; i <= 9; i++) {
+		int result = number * i;
+		char output[32];
+		snprintf(output, sizeof(output), "%d x %d = %d\r\n", number, i, result);
+		for (int j = 0; output[j] != '\0'; j++) {
+			putchar0(output[j]);
+		}
+	}
+}
+
+int main() {
+	char value;
+	init_uart0(); // UART0 초기화
+
+	while (1) {
+		value = getchar0(); // 1 문자 수신
+		putchar0(value); // 에코 백
+
+		// 입력이 1에서 9 사이인지 확인
+		if (value >= '1' && value <= '9') {
+			int number = value - '0'; // 문자를 숫자로 변환
+			display_multiplication_table(number);
+		}
+	}
+
+	return 0;
+}

@@ -1,0 +1,142 @@
+// Week10 report 
+#include <avr/io.h>
+#define F_CPU 16000000UL
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+#define  SOUND_VELOCITY 340UL
+#define TRIG 6
+#define ECHO 7
+#define INT4 4
+#define STATE_0 0
+#define STATE_1 1
+#define NULL 0x00
+unsigned int state = STATE_0;
+#define BIT4_LINE2_DOT58 0x28 // 4비트 모드, 2줄, 5x8도트
+#define DISPON_CUROFF_BLKOFF 0x0C // 디스플레이 On, 커서 Off, 블링크 Off
+#define DISPOFF_CUROFF_BLKOFF 0x08 // 디스플레이 Off, 커서 Off, 블링크 Off
+#define INC_NOSHIFT 0x06 // 커서 증가 방향, Delete/insert
+#define DISPCLEAR 0x01 // 디스플레이 클리어
+#define CUR1LINE 0x80 // 첫째 줄의 처음으로 커서 위치
+#define CUR2LINE 0xC0 // 둘째 줄의 처음으로 커서 위치
+
+void init_CLCD(); // CLCD 초기화 함수
+void init_interrupt(); // Interrupt 초기화 함수
+void CLCD_cmd(char); // 명령어 전송 함수
+void CLCD_data(char); // 데이터 전송 함수
+void CLCD_puts(char *); // 문자열 처리 함수
+void CLCD_num_display(int); // CLCD 디스플레이 함수
+int read_distance(); // 길이 측정 함수
+
+char Height[] = "Height : "; // 높이 계산 및 디스플레이
+char CLCD_NUM[] = "000.0"; // 초기값 = 000.0
+
+ISR(INT4_vect)
+{
+	_delay_ms(100); // 스위치 바운스 시간 동안 기다림
+	if ((PINE &= 0x10) != 0x00) return; // 스위치가 ON 상태인지 확인하여 리턴
+	EIFR |= 1 << 4; // ON이 아니면, 그 사이 스위치 바운스에 의해 생긴 인터럽트는 무효화
+	if(state == STATE_0) state = STATE_1;
+	else state = STATE_0;
+}
+
+int main(void)
+{
+	static int distance1st, distance2nd;
+	DDRA = ((DDRA | (1<<TRIG)) & ~(1<<ECHO)); // 초음파거리센서 TRIG(bit6, 출력), ECHO(bit7, 입력)
+	DDRC = 0xff; // 데이터/명령어 포트
+	DDRD = 0xff; // 제어 포트(RS=bit2, RW=bit3, E=bit4)
+	DDRE = 0x00; // SW1이 연결된 포트 E는 입력으로 선언
+	init_interrupt(); // 인터럽트 초기화
+	init_CLCD(); // CLCD 초기화
+	while(1)
+	{
+		switch(state)
+		{
+			case STATE_0:
+			CLCD_cmd(DISPCLEAR);
+			CLCD_cmd(CUR1LINE); CLCD_puts(Height);
+			distance1st = read_distance();
+			CLCD_cmd(CUR2LINE); CLCD_num_display(distance1st);
+			_delay_ms(100);
+			break;
+			case STATE_1:
+			CLCD_cmd(DISPCLEAR);
+			CLCD_cmd(CUR1LINE); CLCD_puts(Height);
+			distance2nd = distance1st;
+			CLCD_cmd(CUR2LINE); CLCD_num_display(distance2nd);
+			break;
+		}
+	}
+}
+
+void init_interrupt()
+{
+	EICRB = 0x02; // INT4 트리거 모드는 하강 에지(Falling Edge)
+	EIMSK = 0x10; // INT4 인터럽트 활성화
+	SREG |= 0x80; // SREG의 I(Interrupt Enable) 비트(bit7) ‘1’로 세트
+}
+void init_CLCD()
+{
+	_delay_ms(50); // 전원 인가 후 CLCD 셋업 시간
+	PORTC = 0x00; // 데이터 클리어
+	CLCD_cmd(BIT4_LINE2_DOT58); // 4비트 모드, 2줄, 5x8도트
+	CLCD_cmd(DISPON_CUROFF_BLKOFF); // 디스플레이 On, 커서 Off, 블링크 Off
+	CLCD_cmd(INC_NOSHIFT); // 커서 증가 방향, Delete/insert
+	CLCD_cmd(DISPCLEAR); // 디스플레이 Clear
+	_delay_ms(2); // 디스플레이 클리어 실행 시간 동안 대기
+}
+int read_distance()
+{
+	unsigned int distance = 0;
+	TCCR1B = 0x03; // 카운터/타이머 1클록 = 4us
+	PORTA &= ~(1<<TRIG); _delay_us(10); // Trig = LOW
+	PORTA |= (1<<TRIG); _delay_us(10); // Trig = HIGH
+	PORTA &= ~(1<<TRIG); // Trig = LOW
+	while(!(PINA & (1<<ECHO))); // Echo = HIGH일때까지 기다리기
+	TCNT1 = 0x0000; // 카운터/타이머 초기화
+	while (PINA & (1<<ECHO));
+	TCCR1B = 0x00; // 카운터/타이머 정지
+	distance = (unsigned int)(SOUND_VELOCITY * (TCNT1 * 4 / 2) / 1000); // 거리 = 속도 * 시간
+	return(distance);
+}
+void CLCD_puts(char *ptr)
+{
+	while(*ptr != NULL) CLCD_data(*ptr++);
+}
+void CLCD_num_display(int num)
+{
+	CLCD_NUM[0] = (num/1000)%10 + 0x30;
+	CLCD_NUM[1] = (num/100)%10 + 0x30;
+	CLCD_NUM[2] = (num/10)%10 + 0x30;
+	CLCD_NUM[3] = '.';
+	CLCD_NUM[4] = (num/1)%10 + 0x30;
+	CLCD_NUM[5] = NULL;
+	CLCD_puts(CLCD_NUM);
+}
+void CLCD_data(char data)
+{
+	PORTD = 0x04; // 0b00000100, E(4)=0, R/W(3)=0, RS(2)=1, 데이터 사이클 시작
+	_delay_us(1); //Setup Time
+	PORTD = 0x14; //0b00010100, E(4)=1, R/W(3)=0, RS(2)=1, 명령어 활성화/Write/데이터 모드
+	PORTC = data & 0xf0; // 상위 4비트 전송
+	PORTD = 0x04; // 0b00000100, E(4)=0, R/W(3)=0, RS(2)=1, 연속 데이터 사이클(시작+종료)
+	_delay_us(2); // Hold & Setup Time
+	PORTD = 0x14; //0b00010100, E(4)=1, R/W(3)=0, RS(2)=1, 명령어 활성화/Write/데이터 모드
+	PORTC = (data << 4) & 0xf0; // 하위 4비트 전송
+	PORTD = 0x04; // 0b00000100, E(4)=0, R/W(3)=0, RS(2)=1, 명령어 사이클 종료
+	_delay_ms(1); // Hold Time & Execution Time
+}
+void CLCD_cmd(char cmd)
+{
+	PORTD = 0x00; // 0b00000000, E(4)=0, R/W(3)=0, RS(2)=0, 명령어 사이클 시작
+	_delay_us(1); //Setup Time
+	PORTD = 0x10; //0b00010000, E(4)=1, R/W(3)=0, RS(2)=0, 명령어 활성화/Write/명령어 모드
+	PORTC = cmd & 0xf0; // 상위 4비트 전송
+	PORTD = 0x00; // 0b00000000, E(4)=0, R/W(3)=0, RS(2)=0, 연속 명령어 사이클(시작+종료)
+	_delay_us(2); // Hold & Setup Time
+	PORTD = 0x10; // 0b00010000, E(4)=1, R/W(3)=0, RS(2)=0, 명령어 활성화/Write/명령어 모드
+	PORTC = (cmd << 4) & 0xf0; // 하위 4비트 전송
+	PORTD = 0x00; // 0b00000000, E(4)=0, R/W(3)=0, RS(2)=0, 명령어 사이클 종료
+	_delay_ms(1); // Hold Time & Execution Time
+}

@@ -1,0 +1,27 @@
+#include <avr/io.h>
+#define F_CPU 16000000UL
+#include <util/delay.h>
+
+int main() {
+	DDRC = 0xff;
+	DDRG = 0x0f;
+	
+	while(1) {
+		PORTC = 0x76;
+		PORTG = 0x08;
+		
+		_delay_ms(5);
+		PORTC = 0x79;
+		PORTG = 0x04;
+		
+		_delay_ms(5);
+		PORTC = 0x38;
+		PORTG = 0x02;
+		
+		_delay_ms(5);
+		PORTC = 0x73;
+		PORTG = 0x01;
+		
+		_delay_ms(5);
+	}
+}
